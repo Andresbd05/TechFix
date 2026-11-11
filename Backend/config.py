@@ -1,0 +1,9 @@
+class Config:
+    MYSQL_HOST = 'localhost'
+    MYSQL_USER = 'root'
+    MYSQL_PASSWORD = ''
+    MYSQL_DB = 'techfix_db'
+    MYSQL_PORT = 3309
+
+    JWT_SECRET_KEY = '68a5044d9bd8c786e638d98759424b57ba0c3488a2832437270647511b0f98d2'
+    JWT_EXPIRATION_MINUTES = 30

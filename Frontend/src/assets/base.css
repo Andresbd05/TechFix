@@ -1,0 +1,192 @@
+/* ==========================================================
+   TechFix · Tokens de diseño
+   Paleta y escala tipográfica inspiradas en apple.com.
+   El tema oscuro se activa con data-theme="oscuro" en <html>.
+   ========================================================== */
+:root {
+  /* Colores base (tema claro) */
+  --color-fondo: #f5f5f7;
+  --color-superficie: #ffffff;
+  --color-superficie-2: #fbfbfd;
+  --color-texto: #1d1d1f;
+  --color-texto-2: #6e6e73;
+  --color-linea: #d2d2d7;
+  --color-linea-suave: #e8e8ed;
+
+  /* Superficies especiales */
+  --color-nav-fondo: rgba(251, 251, 253, 0.86);
+  --color-borde-sutil: rgba(0, 0, 0, 0.08);
+  --color-sombra: rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.32);
+
+  /* Acciones */
+  --color-accion: #0071e3;
+  --color-accion-hover: #0077ed;
+  --color-enlace: #0066cc;
+  --color-foco: rgba(0, 125, 250, 0.6);
+
+  /* Estados semánticos (siempre acompañados de texto) */
+  --color-peligro: #d70015;
+  --color-peligro-suave: #fff0f1;
+  --color-peligro-texto: #a3000f;
+  --color-aviso: #b64400;
+  --color-aviso-suave: #fff4ec;
+  --color-exito: #1a7f37;
+  --color-exito-suave: #edf8f0;
+  --color-info-suave: #eaf3fe;
+  --color-info-texto: #0a4a8f;
+
+  /* Tokens de la etiqueta de estado "neutra" (Recibido / Entregado) */
+  --estado-neutro-fondo: #f2f2f7;
+  --estado-neutro-texto: #1d1d1f;
+  --estado-entregado-fondo: #f5f5f7;
+  --estado-entregado-texto: #6e6e73;
+
+  /* Tipografía */
+  --fuente: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter',
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Forma y espacio */
+  --radio-sm: 10px;
+  --radio: 18px;
+  --radio-lg: 28px;
+  --ancho-contenido: 1024px;
+  --margen-lateral: 22px;
+  --alto-nav: 48px;
+
+  color-scheme: light;
+}
+
+/* ---------- Tema oscuro ---------- */
+:root[data-theme='oscuro'] {
+  --color-fondo: #000000;
+  --color-superficie: #1c1c1e;
+  --color-superficie-2: #2c2c2e;
+  --color-texto: #f5f5f7;
+  --color-texto-2: #a1a1a6;
+  --color-linea: #3a3a3c;
+  --color-linea-suave: #2c2c2e;
+
+  --color-nav-fondo: rgba(28, 28, 30, 0.82);
+  --color-borde-sutil: rgba(255, 255, 255, 0.12);
+  --color-sombra: rgba(0, 0, 0, 0.5);
+  --color-overlay: rgba(0, 0, 0, 0.6);
+
+  --color-accion: #0a84ff;
+  --color-accion-hover: #409cff;
+  --color-enlace: #4aa3ff;
+  --color-foco: rgba(10, 132, 255, 0.7);
+
+  --color-peligro: #ff453a;
+  --color-peligro-suave: #3a1416;
+  --color-peligro-texto: #ff6961;
+  --color-aviso: #ff9f0a;
+  --color-aviso-suave: #3a2a12;
+  --color-exito: #30d158;
+  --color-exito-suave: #12341c;
+  --color-info-suave: #0a2944;
+  --color-info-texto: #7ab7ff;
+
+  --estado-neutro-fondo: #2c2c2e;
+  --estado-neutro-texto: #f5f5f7;
+  --estado-entregado-fondo: #2c2c2e;
+  --estado-entregado-texto: #a1a1a6;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: var(--fuente);
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -0.022em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--color-enlace);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Foco visible y consistente para teclado */
+:focus-visible {
+  outline: 3px solid var(--color-foco);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Texto solo para lectores de pantalla */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.salto-contenido {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  background: var(--color-superficie);
+  padding: 10px 16px;
+  border-radius: var(--radio-sm);
+}
+
+.salto-contenido:focus {
+  top: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

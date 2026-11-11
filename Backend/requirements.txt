@@ -1,0 +1,5 @@
+Flask
+Flask-MySQLdb==2.0.0
+flask-cors==5.0.0
+PyJWT
+flask-cors
