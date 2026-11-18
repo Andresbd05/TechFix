@@ -10,6 +10,7 @@ import BarraPagina from '@/components/layout/BarraPagina.vue'
 import EtiquetaEstado from '@/components/ui/EtiquetaEstado.vue'
 import Icono from '@/components/ui/Icono.vue'
 import DialogoCliente from '@/components/clientes/DialogoCliente.vue'
+import DialogoEquipo from '@/components/clientes/DialogoEquipo.vue'
 import { nombreMarca } from '@/utils/marcas'
 import { formatoFecha } from '@/utils/formato'
 import { mensajeError } from '@/utils/errores'
@@ -54,6 +55,15 @@ const dialogoEditar = ref(false)
 
 function alGuardar(mensaje) {
   dialogoEditar.value = false
+  avisos.mostrar(mensaje)
+  cargar()
+}
+
+/* ---------- Agregar equipo ---------- */
+const dialogoEquipo = ref(false)
+
+function alGuardarEquipo(mensaje) {
+  dialogoEquipo.value = false
   avisos.mostrar(mensaje)
   cargar()
 }
@@ -155,9 +165,29 @@ async function eliminar() {
         </dl>
 
         <section class="seccion" aria-labelledby="titulo-equipos">
-          <h2 id="titulo-equipos" class="titulo-seccion">Equipos</h2>
+          <div class="titulo-con-accion">
+            <h2 id="titulo-equipos" class="titulo-seccion">Equipos</h2>
+            <button
+              v-if="auth.puedeGestionarClientes"
+              type="button"
+              class="btn btn-secundario btn-chico"
+              @click="dialogoEquipo = true"
+            >
+              Agregar equipo
+            </button>
+          </div>
           <div class="panel-plano mt-2">
-            <p v-if="!equipos.length" class="vacio">Este cliente no tiene equipos registrados.</p>
+            <div v-if="!equipos.length" class="vacio">
+              <p>Este cliente no tiene equipos registrados.</p>
+              <button
+                v-if="auth.puedeGestionarClientes"
+                type="button"
+                class="btn btn-primario btn-chico mt-2"
+                @click="dialogoEquipo = true"
+              >
+                Agregar el primer equipo
+              </button>
+            </div>
             <ul v-else class="lista">
               <li v-for="eq in equipos" :key="eq.id_equipo" class="lista-item">
                 <span class="cuerpo">
@@ -209,6 +239,14 @@ async function eliminar() {
       @eliminar="pedirEliminar"
     />
 
+    <DialogoEquipo
+      :abierto="dialogoEquipo"
+      :cedula="cedula"
+      :nombre-cliente="historial?.cliente?.nombre || ''"
+      @cerrar="dialogoEquipo = false"
+      @guardado="alGuardarEquipo"
+    />
+
     <DialogoConfirmar
       :abierto="confirmarEliminar"
       :titulo="`Eliminar a ${historial?.cliente.nombre || ''}`"
@@ -228,6 +266,13 @@ async function eliminar() {
 .cabecera {
   padding-top: 56px;
   display: grid;
+  gap: 16px;
+}
+
+.titulo-con-accion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
 }
 

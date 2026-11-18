@@ -8,11 +8,11 @@ repuestos_bp = Blueprint('repuestos_bp', __name__)
 @repuestos_bp.route('/repuestos', methods=['GET'])
 @require_jwt
 def obtener_repuestos():
-    # Importamos mysql aquí adentro para evitar errores de referencias circulares
-    from app import mysql
+    # Importamos db aquí adentro para evitar errores de referencias circulares
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT sku_repuesto, nombre, id_marca, precio, stock FROM repuestos")
         datos = cur.fetchall()
         cur.close()
@@ -34,7 +34,7 @@ def obtener_repuestos():
 @repuestos_bp.route('/repuestos', methods=['POST'])
 @require_jwt
 def crear_repuesto():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
 
     # Gestionar inventario: propietario y admin
@@ -46,16 +46,16 @@ def crear_repuesto():
         return jsonify({"error": "Faltan campos obligatorios"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("INSERT INTO repuestos (sku_repuesto, nombre, id_marca, precio, stock) VALUES (%s, %s, %s, %s, %s)",
                     (datos['sku_repuesto'], datos['nombre'], datos['id_marca'], datos['precio'], datos['stock']))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Repuesto agregado al inventario exitosamente"}), 201
     except Exception as e:
-        mysql.connection.rollback()
-        if "1062" in str(e):
+        db.connection.rollback()
+        if getattr(e, 'pgcode', '') == '23505':
             return jsonify({"error": "Ya existe un repuesto con este SKU"}), 409
         return jsonify({"error": str(e)}), 500
 
@@ -63,10 +63,10 @@ def crear_repuesto():
 @repuestos_bp.route('/repuestos/<sku_repuesto>', methods=['GET'])
 @require_jwt
 def obtener_repuesto(sku_repuesto):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT sku_repuesto, nombre, id_marca, precio, stock FROM repuestos WHERE sku_repuesto = %s",
                     (sku_repuesto,))
         fila = cur.fetchone()
@@ -90,7 +90,7 @@ def obtener_repuesto(sku_repuesto):
 @repuestos_bp.route('/repuestos/<sku_repuesto>', methods=['PUT'])
 @require_jwt
 def actualizar_repuesto(sku_repuesto):
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
@@ -101,7 +101,7 @@ def actualizar_repuesto(sku_repuesto):
         return jsonify({"error": "Faltan campos obligatorios"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
 
         # Verificamos que exista antes de actualizar (rowcount da 0 si no cambia nada)
         cur.execute("SELECT sku_repuesto FROM repuestos WHERE sku_repuesto = %s", (sku_repuesto,))
@@ -111,39 +111,39 @@ def actualizar_repuesto(sku_repuesto):
 
         cur.execute("UPDATE repuestos SET nombre = %s, id_marca = %s, precio = %s, stock = %s WHERE sku_repuesto = %s",
                     (datos['nombre'], datos['id_marca'], datos['precio'], datos['stock'], sku_repuesto))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Repuesto actualizado exitosamente"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 
 @repuestos_bp.route('/repuestos/<sku_repuesto>', methods=['DELETE'])
 @require_jwt
 def eliminar_repuesto(sku_repuesto):
-    from app import mysql
+    from app import db
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
         return jsonify({"error": "No tienes permiso para eliminar repuestos"}), 403
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT sku_repuesto FROM repuestos WHERE sku_repuesto = %s", (sku_repuesto,))
         if cur.fetchone() is None:
             cur.close()
             return jsonify({"error": "Repuesto no encontrado"}), 404
 
         cur.execute("DELETE FROM repuestos WHERE sku_repuesto = %s", (sku_repuesto,))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Repuesto eliminado exitosamente"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         # 1451 = la llave foránea lo impide (el repuesto ya se usó en una reparación)
-        if "1451" in str(e):
+        if getattr(e, 'pgcode', '') == '23503':
             return jsonify({"error": "No se puede eliminar: el repuesto ya se usó en una reparación"}), 409
         return jsonify({"error": str(e)}), 500
 
@@ -151,10 +151,10 @@ def eliminar_repuesto(sku_repuesto):
 @repuestos_bp.route('/repuestos/marca/<id_marca>', methods=['GET'])
 @require_jwt
 def obtener_repuestos_por_marca(id_marca):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT sku_repuesto, nombre, precio, stock FROM repuestos WHERE id_marca = %s", (id_marca,))
         datos = cur.fetchall()
         cur.close()
@@ -182,12 +182,12 @@ def obtener_repuestos_por_marca(id_marca):
 @repuestos_bp.route('/repuestos/stock-bajo', methods=['GET'])
 @require_jwt
 def repuestos_stock_bajo():
-    from app import mysql
+    from app import db
 
     minimo = request.args.get('minimo', 5, type=int)
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT sku_repuesto, nombre, stock FROM repuestos WHERE stock <= %s ORDER BY stock",
                     (minimo,))
         datos = cur.fetchall()
@@ -213,7 +213,7 @@ def repuestos_stock_bajo():
 @repuestos_bp.route('/repuestos/<sku_repuesto>/stock', methods=['PATCH'])
 @require_jwt
 def ajustar_stock(sku_repuesto):
-    from app import mysql
+    from app import db
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
         return jsonify({"error": "No tienes permiso para modificar el inventario"}), 403
@@ -225,7 +225,7 @@ def ajustar_stock(sku_repuesto):
         return jsonify({"error": "cantidad debe ser un número entero distinto de 0 (positivo para entrada, negativo para salida)"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT nombre, stock FROM repuestos WHERE sku_repuesto = %s", (sku_repuesto,))
         repuesto = cur.fetchone()
 
@@ -242,11 +242,11 @@ def ajustar_stock(sku_repuesto):
         cur.execute("UPDATE repuestos SET stock = stock + %s WHERE sku_repuesto = %s AND stock + %s >= 0",
                     (cantidad, sku_repuesto, cantidad))
         if cur.rowcount == 0:
-            mysql.connection.rollback()
+            db.connection.rollback()
             cur.close()
             return jsonify({"error": "Stock insuficiente"}), 409
 
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({
@@ -256,22 +256,22 @@ def ajustar_stock(sku_repuesto):
             "stock_nuevo": stock_anterior + cantidad
         }), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 
 @repuestos_bp.route('/repuestos/valor-inventario', methods=['GET'])
 @require_jwt
 def valor_inventario():
-    from app import mysql
+    from app import db
 
     # Reportes del inventario: solo el propietario ve cuánto vale
     if g.usuario.get('rol') != 'propietario':
         return jsonify({"error": "Solo el propietario puede ver los reportes del inventario"}), 403
 
     try:
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT IFNULL(m.nombre_marca, 'Sin marca') AS marca, COUNT(*), SUM(r.stock), SUM(r.precio * r.stock) "
+        cur = db.connection.cursor()
+        cur.execute("SELECT COALESCE(m.nombre_marca, 'Sin marca') AS marca, COUNT(*), SUM(r.stock), SUM(r.precio * r.stock) "
                     "FROM repuestos r "
                     "LEFT JOIN marcas m ON m.id_marca = r.id_marca "
                     "GROUP BY marca "

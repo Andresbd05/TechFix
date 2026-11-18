@@ -29,11 +29,11 @@ def puede_modificar(cedula_tecnico_reparacion):
 @reparaciones_bp.route('/reparaciones', methods=['GET'])
 @require_jwt
 def obtener_reparaciones():
-    # Importamos mysql aquí adentro para evitar errores de referencias circulares
-    from app import mysql
+    # Importamos db aquí adentro para evitar errores de referencias circulares
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_reparacion, id_equipo, cedula_tecnico, estado, diagnostico, fecha_ingreso FROM reparaciones")
         datos = cur.fetchall()
         cur.close()
@@ -56,7 +56,7 @@ def obtener_reparaciones():
 @reparaciones_bp.route('/reparaciones', methods=['POST'])
 @require_jwt
 def crear_reparacion():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
 
     # Crear reparaciones: propietario y admin (el técnico trabaja las que le asignan)
@@ -68,19 +68,19 @@ def crear_reparacion():
         return jsonify({"error": "Faltan campos obligatorios"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("INSERT INTO reparaciones (id_reparacion, id_equipo, diagnostico) VALUES (%s, %s, %s)",
                     (datos['id_reparacion'], datos['id_equipo'], datos['diagnostico']))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Reparación creada exitosamente"}), 201
     except Exception as e:
-        mysql.connection.rollback()
-        if "1062" in str(e):
+        db.connection.rollback()
+        if getattr(e, 'pgcode', '') == '23505':
             return jsonify({"error": "Ya existe una reparación con este id"}), 409
         # 1452 = la llave foránea no encuentra el equipo
-        if "1452" in str(e):
+        if getattr(e, 'pgcode', '') == '23503':
             return jsonify({"error": "El equipo indicado no existe"}), 400
         return jsonify({"error": str(e)}), 500
 
@@ -88,10 +88,10 @@ def crear_reparacion():
 @reparaciones_bp.route('/reparaciones/<id_reparacion>', methods=['GET'])
 @require_jwt
 def buscar_reparacion(id_reparacion):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_reparacion, id_equipo, cedula_tecnico, estado, diagnostico, fecha_ingreso "
                     "FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         fila = cur.fetchone()
@@ -116,27 +116,27 @@ def buscar_reparacion(id_reparacion):
 @reparaciones_bp.route('/reparaciones/<id_reparacion>', methods=['DELETE'])
 @require_jwt
 def eliminar_reparacion(id_reparacion):
-    from app import mysql
+    from app import db
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
         return jsonify({"error": "No tienes permiso para eliminar reparaciones"}), 403
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_reparacion FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         if cur.fetchone() is None:
             cur.close()
             return jsonify({"error": "Reparación no encontrada"}), 404
 
         cur.execute("DELETE FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Reparación eliminada exitosamente"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         # 1451 = la llave foránea lo impide (la reparación tiene repuestos usados)
-        if "1451" in str(e):
+        if getattr(e, 'pgcode', '') == '23503':
             return jsonify({"error": "No se puede eliminar: la reparación tiene repuestos registrados"}), 409
         return jsonify({"error": str(e)}), 500
 
@@ -145,7 +145,7 @@ def eliminar_reparacion(id_reparacion):
 @require_jwt
 @require_admin
 def asignar_tecnico(id_reparacion):
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     cedula_tecnico = datos.get('cedula_tecnico')
 
@@ -153,7 +153,7 @@ def asignar_tecnico(id_reparacion):
         return jsonify({"error": "El campo cedula_tecnico es obligatorio"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT estado FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         reparacion = cur.fetchone()
 
@@ -180,22 +180,22 @@ def asignar_tecnico(id_reparacion):
                     (cedula_tecnico, id_reparacion))
         cur.execute("UPDATE tecnicos SET reparacion_activa_id = %s WHERE cedula_tecnico = %s",
                     (id_reparacion, cedula_tecnico))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": f"Reparación {id_reparacion} asignada a {tecnico[0]}"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 
 @reparaciones_bp.route('/reparaciones/<id_reparacion>/avanzar', methods=['PUT'])
 @require_jwt
 def avanzar_estado(id_reparacion):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT estado, cedula_tecnico FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         reparacion = cur.fetchone()
 
@@ -225,7 +225,7 @@ def avanzar_estado(id_reparacion):
             cur.execute("UPDATE tecnicos SET reparacion_activa_id = NULL WHERE reparacion_activa_id = %s",
                         (id_reparacion,))
 
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({
@@ -234,14 +234,14 @@ def avanzar_estado(id_reparacion):
             "estado_nuevo": nuevo_estado
         }), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 
 @reparaciones_bp.route('/reparaciones/<id_reparacion>/repuestos', methods=['POST'])
 @require_jwt
 def usar_repuesto(id_reparacion):
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     sku_repuesto = datos.get('sku_repuesto')
     cantidad = datos.get('cantidad', 1)
@@ -252,7 +252,7 @@ def usar_repuesto(id_reparacion):
         return jsonify({"error": "cantidad debe ser un número entero mayor que 0"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT estado, cedula_tecnico FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         reparacion = cur.fetchone()
 
@@ -279,15 +279,16 @@ def usar_repuesto(id_reparacion):
         cur.execute("UPDATE repuestos SET stock = stock - %s WHERE sku_repuesto = %s AND stock >= %s",
                     (cantidad, sku_repuesto, cantidad))
         if cur.rowcount == 0:
-            mysql.connection.rollback()
+            db.connection.rollback()
             cur.close()
             return jsonify({"error": "Stock insuficiente"}), 409
 
         # Si el repuesto ya estaba en la reparación, sumamos la cantidad
         cur.execute("INSERT INTO reparacion_repuestos (id_reparacion, sku_repuesto, cantidad) VALUES (%s, %s, %s) "
-                    "ON DUPLICATE KEY UPDATE cantidad = cantidad + %s",
+                    "ON CONFLICT (id_reparacion, sku_repuesto) DO UPDATE "
+                    "SET cantidad = reparacion_repuestos.cantidad + %s",
                     (id_reparacion, sku_repuesto, cantidad, cantidad))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({
@@ -295,17 +296,17 @@ def usar_repuesto(id_reparacion):
             "stock_restante": repuesto[1] - cantidad
         }), 201
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 
 @reparaciones_bp.route('/reparaciones/<id_reparacion>/cotizacion', methods=['GET'])
 @require_jwt
 def cotizar_reparacion(id_reparacion):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_reparacion FROM reparaciones WHERE id_reparacion = %s", (id_reparacion,))
         if cur.fetchone() is None:
             cur.close()
@@ -349,14 +350,14 @@ def cotizar_reparacion(id_reparacion):
 @reparaciones_bp.route('/mis-reparaciones', methods=['GET'])
 @require_jwt
 def mis_reparaciones():
-    from app import mysql
+    from app import db
 
     cedula_tecnico = g.usuario.get('cedula_tecnico')
     if not cedula_tecnico:
         return jsonify({"error": "Tu usuario no está asociado a ningún técnico"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_reparacion, id_equipo, estado, diagnostico, fecha_ingreso FROM reparaciones "
                     "WHERE cedula_tecnico = %s ORDER BY fecha_ingreso", (cedula_tecnico,))
         datos = cur.fetchall()

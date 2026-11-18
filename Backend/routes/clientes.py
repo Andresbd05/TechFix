@@ -8,11 +8,11 @@ clientes_bp = Blueprint('clientes_bp', __name__)
 @clientes_bp.route('/clientes', methods=['GET'])
 @require_jwt
 def obtener_clientes():
-    # Importamos mysql aquí adentro para evitar errores de referencias circulares
-    from app import mysql
+    # Importamos db aquí adentro para evitar errores de referencias circulares
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT cedula, nombre, telefono, correo FROM clientes")
         datos = cur.fetchall()
         cur.close()
@@ -33,7 +33,7 @@ def obtener_clientes():
 @clientes_bp.route('/clientes', methods=['POST'])
 @require_jwt
 def crear_cliente():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
 
     # Gestionar clientes: propietario y admin (el técnico y el invitado solo ven)
@@ -45,16 +45,16 @@ def crear_cliente():
         return jsonify({"error": "Faltan campos obligatorios"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("INSERT INTO clientes (cedula, nombre, telefono, correo) VALUES (%s, %s, %s, %s)",
                     (datos['cedula'], datos['nombre'], datos['telefono'], datos['correo']))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Cliente creado exitosamente"}), 201
     except Exception as e:
-        mysql.connection.rollback()
-        if "1062" in str(e):
+        db.connection.rollback()
+        if getattr(e, 'pgcode', '') == '23505':
             return jsonify({"error": "Ya existe un cliente con esta cédula"}), 409
         return jsonify({"error": str(e)}), 500
 
@@ -63,7 +63,7 @@ def crear_cliente():
 @clientes_bp.route('/clientes/buscar', methods=['GET'])
 @require_jwt
 def buscar_clientes():
-    from app import mysql
+    from app import db
 
     texto = request.args.get('q', '').strip()
     if len(texto) < 2:
@@ -72,9 +72,9 @@ def buscar_clientes():
     patron = f"%{texto}%"
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT cedula, nombre, telefono, correo FROM clientes "
-                    "WHERE nombre LIKE %s OR cedula LIKE %s OR telefono LIKE %s ORDER BY nombre",
+                    "WHERE nombre ILIKE %s OR cedula ILIKE %s OR telefono ILIKE %s ORDER BY nombre",
                     (patron, patron, patron))
         datos = cur.fetchall()
         cur.close()
@@ -95,10 +95,10 @@ def buscar_clientes():
 @clientes_bp.route('/clientes/<cedula>', methods=['GET'])
 @require_jwt
 def buscar_cliente(cedula):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT cedula, nombre, telefono, correo FROM clientes WHERE cedula = %s", (cedula,))
         fila = cur.fetchone()
         cur.close()
@@ -120,7 +120,7 @@ def buscar_cliente(cedula):
 @clientes_bp.route('/clientes/<cedula>', methods=['PUT'])
 @require_jwt
 def actualizar_cliente(cedula):
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
@@ -131,10 +131,10 @@ def actualizar_cliente(cedula):
         return jsonify({"error": "Faltan campos obligatorios"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
 
-        # Verificamos que exista antes de actualizar: rowcount no sirve para esto
-        # porque MySQL devuelve 0 si los valores nuevos son iguales a los actuales
+        # Verificamos que exista antes de actualizar (el UPDATE no distingue
+        # entre 'no existe' y 'sin cambios')
         cur.execute("SELECT cedula FROM clientes WHERE cedula = %s", (cedula,))
         if cur.fetchone() is None:
             cur.close()
@@ -142,39 +142,39 @@ def actualizar_cliente(cedula):
 
         cur.execute("UPDATE clientes SET nombre = %s, telefono = %s, correo = %s WHERE cedula = %s",
                     (datos['nombre'], datos['telefono'], datos['correo'], cedula))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Cliente actualizado exitosamente"}), 200
     except Exception as e:
-        mysql.connection.rollback()  # Deshacemos el cambio si algo falló
+        db.connection.rollback()  # Deshacemos el cambio si algo falló
         return jsonify({"error": str(e)}), 500
 
 
 @clientes_bp.route('/clientes/<cedula>', methods=['DELETE'])
 @require_jwt
 def eliminar_cliente(cedula):
-    from app import mysql
+    from app import db
 
     if g.usuario.get('rol') not in ['propietario', 'admin']:
         return jsonify({"error": "No tienes permiso para eliminar clientes"}), 403
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT cedula FROM clientes WHERE cedula = %s", (cedula,))
         if cur.fetchone() is None:
             cur.close()
             return jsonify({"error": "Cliente no encontrado"}), 404
 
         cur.execute("DELETE FROM clientes WHERE cedula = %s", (cedula,))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
 
         return jsonify({"mensaje": "Cliente eliminado exitosamente"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         # 1451 = la llave foránea lo impide (el cliente tiene equipos registrados)
-        if "1451" in str(e):
+        if getattr(e, 'pgcode', '') == '23503':
             return jsonify({"error": "No se puede eliminar: el cliente tiene equipos registrados"}), 409
         return jsonify({"error": str(e)}), 500
 
@@ -182,10 +182,10 @@ def eliminar_cliente(cedula):
 @clientes_bp.route('/clientes/<cedula>/equipos', methods=['GET'])
 @require_jwt
 def obtener_equipos_cliente(cedula):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT id_equipo, id_marca, tipo_dispositivo, serial_imei FROM equipos WHERE cliente_cedula = %s",
                     (cedula,))
         datos = cur.fetchall()
@@ -211,13 +211,81 @@ def obtener_equipos_cliente(cedula):
         return jsonify({"error": str(e)}), 500
 
 
+@clientes_bp.route('/clientes/<cedula>/equipos', methods=['POST'])
+@require_jwt
+def crear_equipo(cedula):
+    from app import db
+    datos = request.get_json(silent=True) or {}
+
+    # Registrar equipos: propietario y admin (el técnico y el invitado solo ven)
+    if g.usuario.get('rol') not in ['propietario', 'admin']:
+        return jsonify({"error": "No tienes permiso para registrar equipos"}), 403
+
+    id_equipo = (datos.get('id_equipo') or '').strip()
+    tipo_dispositivo = (datos.get('tipo_dispositivo') or '').strip()
+    if not id_equipo or not tipo_dispositivo:
+        return jsonify({"error": "Faltan campos obligatorios: id_equipo y tipo_dispositivo"}), 400
+
+    # La marca es opcional (puede quedar sin marca); el serial/IMEI también
+    id_marca = datos.get('id_marca')
+    if id_marca in ('', None):
+        id_marca = None
+    serial_imei = (datos.get('serial_imei') or '').strip() or None
+
+    try:
+        cur = db.connection.cursor()
+
+        # El cliente debe existir
+        cur.execute("SELECT cedula FROM clientes WHERE cedula = %s", (cedula,))
+        if cur.fetchone() is None:
+            cur.close()
+            return jsonify({"error": "Cliente no encontrado"}), 404
+
+        # No repetir el código del equipo
+        cur.execute("SELECT id_equipo FROM equipos WHERE id_equipo = %s", (id_equipo,))
+        if cur.fetchone() is not None:
+            cur.close()
+            return jsonify({"error": "Ya existe un equipo con ese código"}), 409
+
+        # El serial/IMEI es UNIQUE: no puede repetirse
+        if serial_imei is not None:
+            cur.execute("SELECT id_equipo FROM equipos WHERE serial_imei = %s", (serial_imei,))
+            if cur.fetchone() is not None:
+                cur.close()
+                return jsonify({"error": "Ya hay un equipo registrado con ese serial/IMEI"}), 409
+
+        cur.execute("INSERT INTO equipos (id_equipo, cliente_cedula, id_marca, tipo_dispositivo, serial_imei) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (id_equipo, cedula, id_marca, tipo_dispositivo, serial_imei))
+        db.connection.commit()
+        cur.close()
+
+        return jsonify({
+            "mensaje": "Equipo registrado exitosamente",
+            "equipo": {
+                "id_equipo": id_equipo,
+                "id_marca": id_marca,
+                "tipo_dispositivo": tipo_dispositivo,
+                "serial_imei": serial_imei
+            }
+        }), 201
+    except Exception as e:
+        db.connection.rollback()
+        if getattr(e, 'pgcode', '') == '23505':
+            return jsonify({"error": "Ya existe un equipo con ese código o serial"}), 409
+        # 1452 = la llave foránea no encuentra la marca indicada
+        if getattr(e, 'pgcode', '') == '23503':
+            return jsonify({"error": "La marca indicada no existe"}), 400
+        return jsonify({"error": str(e)}), 500
+
+
 @clientes_bp.route('/clientes/<cedula>/historial', methods=['GET'])
 @require_jwt
 def historial_cliente(cedula):
-    from app import mysql
+    from app import db
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("SELECT nombre, telefono, correo FROM clientes WHERE cedula = %s", (cedula,))
         cliente = cur.fetchone()
 

@@ -10,7 +10,7 @@ login_bp = Blueprint('login_bp', __name__)
 
 @login_bp.route('/login', methods=['POST'])
 def login():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     username = datos.get('username')
     password = datos.get('password')
@@ -18,7 +18,7 @@ def login():
     if not username or not password:
         return jsonify({"error": "username y password son obligatorios"}), 400
 
-    cur = mysql.connection.cursor()
+    cur = db.connection.cursor()
     cur.execute("SELECT id_usuario, password_hash, rol, cedula_tecnico, plan, nombre FROM usuarios WHERE username = %s",
             (username,))
     fila = cur.fetchone()
@@ -51,7 +51,7 @@ def login():
 @require_jwt
 @require_admin
 def registrar_usuario():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     username = datos.get('username')
     password = datos.get('password')
@@ -74,15 +74,15 @@ def registrar_usuario():
     password_hash = generate_password_hash(password)
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("INSERT INTO usuarios (username, password_hash, rol, cedula_tecnico, plan) "
                     "VALUES (%s, %s, %s, %s, %s)",
                     (username, password_hash, rol, cedula_tecnico, plan))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
         return jsonify({"mensaje": "Usuario registrado exitosamente"}), 201
     except Exception:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": "No se pudo registrar (¿usuario duplicado o cédula de técnico inexistente?)"}), 400
 
 
@@ -102,7 +102,7 @@ def perfil():
 # La cuenta entra como propietario (dueño de su taller) en el plan Gratis.
 @login_bp.route('/registro', methods=['POST'])
 def registro_publico():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     nombre = (datos.get('nombre') or '').strip()
     email = (datos.get('email') or '').strip().lower()
@@ -118,17 +118,17 @@ def registro_publico():
     password_hash = generate_password_hash(password)
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         # El correo se guarda como nombre de usuario; con él se inicia sesión
         cur.execute("INSERT INTO usuarios (username, password_hash, nombre, rol, cedula_tecnico, plan) "
                     "VALUES (%s, %s, %s, 'propietario', NULL, 'gratis')",
                     (email, password_hash, nombre))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
         return jsonify({"mensaje": "Cuenta creada exitosamente"}), 201
     except Exception as e:
-        mysql.connection.rollback()
-        if "1062" in str(e):
+        db.connection.rollback()
+        if getattr(e, 'pgcode', '') == '23505':
             return jsonify({"error": "Ya existe una cuenta con ese correo"}), 409
         return jsonify({"error": "No se pudo crear la cuenta"}), 400
 
@@ -137,7 +137,7 @@ def registro_publico():
 @login_bp.route('/mi-plan', methods=['PUT'])
 @require_jwt
 def cambiar_mi_plan():
-    from app import mysql
+    from app import db
     datos = request.get_json(silent=True) or {}
     plan = datos.get('plan')
 
@@ -145,12 +145,12 @@ def cambiar_mi_plan():
         return jsonify({"error": "plan debe ser gratis, basico, pro o empresa"}), 400
 
     try:
-        cur = mysql.connection.cursor()
+        cur = db.connection.cursor()
         cur.execute("UPDATE usuarios SET plan = %s WHERE id_usuario = %s",
                     (plan, g.usuario.get('sub')))
-        mysql.connection.commit()
+        db.connection.commit()
         cur.close()
         return jsonify({"mensaje": "Plan actualizado", "plan": plan}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.connection.rollback()
         return jsonify({"error": str(e)}), 500

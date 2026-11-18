@@ -22,6 +22,9 @@ export default {
   equipos(cedula) {
     return api.get(`/clientes/${encodeURIComponent(cedula)}/equipos`)
   },
+  crearEquipo(cedula, equipo) {
+    return api.post(`/clientes/${encodeURIComponent(cedula)}/equipos`, equipo)
+  },
   historial(cedula) {
     return api.get(`/clientes/${encodeURIComponent(cedula)}/historial`)
   },
