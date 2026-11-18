@@ -1,3 +1,4 @@
+import os
 from flask import Flask, g
 from flask_cors import CORS
 import psycopg2
@@ -6,8 +7,14 @@ from config import Config
 # 1. Inicializamos la aplicación Flask
 app = Flask(__name__)
 
-# 1.1 Permitimos que el frontend de Vue (otro puerto) consuma esta API
-CORS(app)
+# 1.1 Permitimos que el frontend (otro dominio/puerto) consuma esta API.
+#     Si defines CORS_ORIGINS (la URL de tu frontend; varias separadas por coma)
+#     se restringe a esos orígenes; si no, se permite cualquiera.
+_origenes = os.environ.get('CORS_ORIGINS')
+if _origenes:
+    CORS(app, origins=[o.strip() for o in _origenes.split(',') if o.strip()])
+else:
+    CORS(app)
 
 # 2. Cargamos la configuración (que a su vez lee Backend/.env)
 app.config.from_object(Config)
@@ -46,6 +53,12 @@ def cerrar_conexion(error=None):
     conexion = g.pop('conexion_db', None)
     if conexion is not None:
         conexion.close()
+
+
+# Ruta de salud: visitar la raíz "/" confirma que la API está viva.
+@app.route('/')
+def inicio():
+    return {"servicio": "TechFix API", "estado": "ok"}, 200
 
 
 # 4. Importamos y registramos los Blueprints (antes eran 3 microservicios:
